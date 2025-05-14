@@ -1,6 +1,10 @@
 import pygame
 import random
 import sys
+from actions import ACTIONS, DIRECTIONS
+from hunter_agent import HunterAgent
+from lion_agent import LionAgent
+from sheep_agent import SheepAgent
 
 # Initialize pygame
 pygame.init()
@@ -16,18 +20,18 @@ WHITE = (255, 255, 255)
 # Emojis
 LION_EMOJI = '🦁'
 HUNTER_EMOJI = '🏹'
-FOOD_EMOJI = '🍖'
+SHEEP_EMOJI = '🐑'
 
 # Setup window
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption("Lion and Hunter Game")
+pygame.display.set_caption("Lion Clash")
 font = pygame.font.Font('./NotoEmoji-Regular.ttf', CELL_SIZE)
 
 class GameState:
     def __init__(self):
         self.lion_pos = [0, 0]
-        self.hunter_pos = [[GRID_SIZE - 1, GRID_SIZE - 1]]
-        self.food_pos = [
+        self.hunter_pos = [GRID_SIZE - 1, GRID_SIZE - 1]  # Single hunter
+        self.sheep_pos = [
             [random.randint(0, GRID_SIZE - 1), random.randint(0, GRID_SIZE - 1)]
             for _ in range(5)
         ]
@@ -36,69 +40,77 @@ class GameState:
 
     def draw_cell(self, emoji, position):
         text = font.render(emoji, True, (0, 0, 0))
-        rect = text.get_rect(center=((position[1]+0.5)*CELL_SIZE, (position[0]+0.5)*CELL_SIZE))
+        rect = text.get_rect(center=((position[1] + 0.5) * CELL_SIZE, (position[0] + 0.5) * CELL_SIZE))
         screen.blit(text, rect)
 
     def draw(self):
         screen.fill(WHITE)
 
-        # Highlight the proximity range around each hunter in red
-        for hunter in self.hunter_pos:
-            for dx in range(-self.proximity_range, self.proximity_range + 1):
-                for dy in range(-self.proximity_range, self.proximity_range + 1):
-                    x, y = hunter[0] + dx, hunter[1] + dy
-                    if 0 <= x < GRID_SIZE and 0 <= y < GRID_SIZE:
-                        rect = pygame.Rect(y * CELL_SIZE, x * CELL_SIZE, CELL_SIZE, CELL_SIZE)
-                        pygame.draw.rect(screen, (255, 0, 0), rect)
+        # Highlight the proximity range around the hunter in red
+        for dx in range(-self.proximity_range, self.proximity_range + 1):
+            for dy in range(-self.proximity_range, self.proximity_range + 1):
+                x, y = self.hunter_pos[0] + dx, self.hunter_pos[1] + dy
+                if 0 <= x < GRID_SIZE and 0 <= y < GRID_SIZE:
+                    rect = pygame.Rect(y * CELL_SIZE, x * CELL_SIZE, CELL_SIZE, CELL_SIZE)
+                    pygame.draw.rect(screen, (255, 0, 0), rect)
 
-        # Draw food
-        for food in self.food_pos:
-            self.draw_cell(FOOD_EMOJI, food)
+        # Draw sheep
+        for sheep in self.sheep_pos:
+            self.draw_cell(SHEEP_EMOJI, sheep)
 
         # Draw lion
         self.draw_cell(LION_EMOJI, self.lion_pos)
 
-        # Draw hunters
-        for hunter in self.hunter_pos:
-            self.draw_cell(HUNTER_EMOJI, hunter)
+        # Draw hunter
+        self.draw_cell(HUNTER_EMOJI, self.hunter_pos)
 
         pygame.display.flip()
 
-    def move_agent(self, agent, direction):
+    def move_agent(self, agent, action):
+        if action not in DIRECTIONS or action == "STAY":
+            return agent  # No movement
+        dx, dy = DIRECTIONS[action]
         x, y = agent
-        dx, dy = direction
         new_x, new_y = x + dx, y + dy
         if 0 <= new_x < GRID_SIZE and 0 <= new_y < GRID_SIZE:
             return [new_x, new_y]
         return agent
 
     def is_lion_caught(self):
-        for hunter in self.hunter_pos:
-            # Check if the lion is within the proximity range in both x and y directions
-            if abs(self.lion_pos[0] - hunter[0]) <= self.proximity_range and abs(self.lion_pos[1] - hunter[1]) <= self.proximity_range:
-                return True
+        # Check if the lion is within the proximity range of the hunter
+        if abs(self.lion_pos[0] - self.hunter_pos[0]) <= self.proximity_range and abs(self.lion_pos[1] - self.hunter_pos[1]) <= self.proximity_range:
+            return True
         return False
 
-    def update(self, lion_action, hunter_actions):
-        # Move the lion
-        self.lion_pos = self.move_agent(self.lion_pos, lion_action)
-        if self.lion_pos in self.food_pos:
-            self.food_pos.remove(self.lion_pos)
+    def remove_eaten_sheep(self):
+        # Check if the lion's position matches any sheep's position
+        if self.lion_pos in self.sheep_pos:
+            self.sheep_pos.remove(self.lion_pos)
             self.score += 10
 
-        # Move the hunters
-        self.hunter_pos = [self.move_agent(pos, act) for pos, act in zip(self.hunter_pos, hunter_actions)]
+    def update(self, lion_action, hunter_action, sheep_actions):
+        # Move the lion
+        self.lion_pos = self.move_agent(self.lion_pos, lion_action)
+
+        # Move the hunter
+        self.hunter_pos = self.move_agent(self.hunter_pos, hunter_action)
+
+        # Move the sheep
+        self.sheep_pos = [self.move_agent(pos, act) for pos, act in zip(self.sheep_pos, sheep_actions)]
 
         # Draw the updated state before checking game-over conditions
         self.draw()
 
-        # Check if the lion is caught by the hunter or within proximity
+        # Remove eaten sheep after all movements
+        self.remove_eaten_sheep()
+        
+        # Check if the lion is caught by the hunter
         if self.is_lion_caught():
             self.show_game_over_screen("Lion was caught by the hunter!")
 
-        # Check if all the food is gone
-        if not self.food_pos:
-            self.show_game_over_screen("Lion ate all the food!")
+        # Check if all the sheep are gone
+        if not self.sheep_pos:
+            self.show_game_over_screen("Lion ate all the sheep!")
 
     def show_game_over_screen(self, message):
         # Create a semi-transparent overlay
@@ -128,21 +140,13 @@ class GameState:
                 if event.type == pygame.MOUSEBUTTONDOWN:
                     waiting = False
 
-# Agents
-class RandomLionAgent:
-    def get_action(self):
-        return random.choice([(1, 0), (-1, 0), (0, 1), (0, -1)])
-
-class RandomHunterAgent:
-    def get_action(self):
-        return random.choice([(1, 0), (-1, 0), (0, 1), (0, -1)])
-
 # Main game loop
 def main():
     clock = pygame.time.Clock()
     game = GameState()
-    lion_agent = RandomLionAgent()
-    hunter_agents = [RandomHunterAgent() for _ in game.hunter_pos]
+    lion_agent = LionAgent()
+    hunter_agent = HunterAgent()
+    sheep_agents = [SheepAgent() for _ in game.sheep_pos]
 
     running = True
     while running:
@@ -151,9 +155,13 @@ def main():
                 game.show_game_over_screen("Game Over!")
                 running = False
 
-        lion_move = lion_agent.get_action()
-        hunter_moves = [agent.get_action() for agent in hunter_agents]
-        game.update(lion_move, hunter_moves)
+        lion_move = lion_agent.get_action(game.lion_pos, game.hunter_pos, game.sheep_pos)
+        hunter_move = hunter_agent.get_action(game.hunter_pos, game.lion_pos)
+        sheep_moves = [
+            agent.get_action(sheep_pos, game.lion_pos)
+            for agent, sheep_pos in zip(sheep_agents, game.sheep_pos)
+        ]
+        game.update(lion_move, hunter_move, sheep_moves)
 
         clock.tick(5)  # 5 frames per second
 
