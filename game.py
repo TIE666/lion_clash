@@ -171,7 +171,7 @@ def main():
                 running = False
 
         lion_move = lion_agent.get_action(game.lion_pos, game.hunter_pos, game.sheep_pos)
-        hunter_move = hunter_agent.get_action(game.hunter_pos, game.lion_pos)
+        hunter_move = hunter_agent.get_action(game.hunter_pos, game.lion_pos, game.sheep_pos)
         sheep_moves = [
             agent.get_action(sheep_pos, game.lion_pos)
             for agent, sheep_pos in zip(sheep_agents, game.sheep_pos)
