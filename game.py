@@ -43,7 +43,7 @@ class GameState:
         rect = text.get_rect(center=((position[1] + 0.5) * CELL_SIZE, (position[0] + 0.5) * CELL_SIZE))
         screen.blit(text, rect)
 
-    def draw(self):
+    def draw(self, remaining_time=None):
         screen.fill(WHITE)
 
         # Highlight the proximity range around the hunter in red
@@ -63,6 +63,12 @@ class GameState:
 
         # Draw hunter
         self.draw_cell(HUNTER_EMOJI, self.hunter_pos)
+
+        # Draw remaining time if provided
+        if remaining_time is not None:
+            timer_font = pygame.font.SysFont('arial', 20)
+            timer_text = timer_font.render(f"Time Left: {remaining_time}s", True, (0, 0, 0))
+            screen.blit(timer_text, (10, 10))
 
         pygame.display.flip()
 
@@ -148,8 +154,17 @@ def main():
     hunter_agent = HunterAgent()
     sheep_agents = [SheepAgent() for _ in game.sheep_pos]
 
+    game_duration = 20  # Game duration in seconds
+    start_time = pygame.time.get_ticks()
+
     running = True
     while running:
+        elapsed_time = (pygame.time.get_ticks() - start_time) // 1000
+        remaining_time = max(0, game_duration - elapsed_time)
+        if remaining_time == 0:
+            game.show_game_over_screen("Time's up!")
+            running = False
+
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 game.show_game_over_screen("Game Over!")
@@ -162,6 +177,7 @@ def main():
             for agent, sheep_pos in zip(sheep_agents, game.sheep_pos)
         ]
         game.update(lion_move, hunter_move, sheep_moves)
+        game.draw(remaining_time)
 
         clock.tick(5)  # 5 frames per second
 
